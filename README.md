@@ -10,7 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dknos/ootp-coach-editor/releases/latest"><b>Download the latest release</b></a>
+  <a href="https://github.com/dknos/ootp-coach-editor/raw/main/OOTPCoachEditor.exe"><b>Download OOTPCoachEditor.exe</b></a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://github.com/dknos/ootp-coach-editor/releases/latest">All releases</a>
   &nbsp;&middot;&nbsp;
   <a href="https://ko-fi.com/dknos">Support on Ko-fi</a>
 </p>
@@ -62,7 +64,13 @@ You can at least confirm you got the real file. In PowerShell:
 Get-FileHash .\OOTPCoachEditor.exe -Algorithm SHA256
 ```
 
-Compare it against the SHA-256 published on the
+It should match:
+
+```
+a7d9b60a7cf480ec9fc1c274514b81fb1676d6fcbc7a372735e4b3d8f633ade7
+```
+
+The same hash is published on the
 [release page](https://github.com/dknos/ootp-coach-editor/releases/latest).
 
 All the source is here - `app.py` (the interface) and `ootplib.py` (all save
