@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+*.bak
+*.bak[0-9]*
+OOTPCoachEditor.exe
