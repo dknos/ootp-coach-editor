@@ -41,8 +41,10 @@ while OOTP is open.
 3. Pick your save - it finds everything under
    `Documents\Out of the Park Developments\*\saved_games\*.lg` automatically.
 4. Pick an Organization (includes every affiliate) and optionally one Team.
-5. Choose what to apply, then **Apply to selected** or **MAX OUT ALL COACHES**.
-6. Load the save in OOTP.
+5. Click any **column heading to sort** - by salary to find your expensive
+   staff, or by ratings to find the weakest. Click again to reverse.
+6. Choose what to apply, then **Apply to selected** or **MAX OUT ALL COACHES**.
+7. Load the save in OOTP.
 
 ## Verifying the download
 

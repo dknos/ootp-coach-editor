@@ -112,8 +112,13 @@ class App(tk.Tk):
         for c, w, t in (("id", 60, "ID"), ("name", 210, "Name"), ("team", 190, "Team"),
                         ("salary", 100, "Salary"), ("yrs", 55, "Years"),
                         ("ext", 90, "Extension"), ("ratings", 320, "Ratings (12 edited)")):
-            self.tree.heading(c, text=t)
+            self.tree.heading(c, text=t, command=lambda col=c: self.sort_by(col))
             self.tree.column(c, width=w, anchor="w")
+        self._headings = {c: t for c, _w, t in (
+            ("id", 60, "ID"), ("name", 210, "Name"), ("team", 190, "Team"),
+            ("salary", 100, "Salary"), ("yrs", 55, "Years"),
+            ("ext", 90, "Extension"), ("ratings", 320, "Ratings (12 edited)"))}
+        self._sort = (None, False)
         vs = ttk.Scrollbar(lst, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vs.set)
         self.tree.pack(side="left", fill="both", expand=True)
@@ -270,6 +275,39 @@ class App(tk.Tk):
         self.cb_team.current(0)
         self.fill_coaches()
 
+    @staticmethod
+    def _sort_key(col, v):
+        """Columns hold display strings, so parse them back to sort sensibly."""
+        v = (v or "").strip()
+        if col in ("id", "yrs"):
+            return int(v or 0)
+        if col == "salary":
+            return int(v.replace("$", "").replace(",", "") or 0)
+        if col == "ext":
+            return int(v.rstrip("y") or 0)
+        if col == "ratings":
+            # "200 200 195 ..." -> compare numerically, weakest rating first
+            nums = [int(x) for x in v.split() if x.isdigit()]
+            return (sum(nums) / len(nums)) if nums else -1
+        return v.lower()
+
+    def sort_by(self, col):
+        prev, desc = self._sort
+        desc = not desc if prev == col else False
+        rows = [(self.tree.set(i, col), i) for i in self.tree.get_children("")]
+        try:
+            rows.sort(key=lambda r: self._sort_key(col, r[0]), reverse=desc)
+        except (TypeError, ValueError):
+            rows.sort(key=lambda r: (r[0] or "").lower(), reverse=desc)
+        for pos, (_v, item) in enumerate(rows):
+            self.tree.move(item, "", pos)
+        self._sort = (col, desc)
+        for c, t in self._headings.items():
+            arrow = ("  \u25bc" if desc else "  \u25b2") if c == col else ""
+            self.tree.heading(c, text=t + arrow)
+        # keep the id list in the order shown, so "max out all" follows the view
+        self.rows = [int(self.tree.item(i)["values"][0]) for i in self.tree.get_children("")]
+
     def fill_coaches(self):
         self.tree.delete(*self.tree.get_children())
         self.rows = []
@@ -298,6 +336,10 @@ class App(tk.Tk):
                 "%dy" % con.get("ext_years", 0), shown))
             self.rows.append(cid)
         self.lbl_teamnote.config(text="%d coaches" % len(self.rows))
+        if self._sort[0]:
+            col, desc = self._sort
+            self._sort = (col, not desc)     # sort_by toggles; keep the direction
+            self.sort_by(col)
 
     # -------------------------------------------------------------- apply
     def apply(self, everything):
