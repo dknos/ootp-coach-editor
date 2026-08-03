@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import ootplib as O
+import theme as TH
 from icon_data import ICON_PNG_B64
 
 APP = "OOTP Coach Editor"
@@ -51,6 +52,10 @@ class App(tk.Tk):
         self.coaches = None          # O.Coaches
         self.tnames = {}             # team id -> name
         self.rows = []               # coach ids in list order
+        self.mode = self._load_pref()
+        self.style = ttk.Style(self)
+        self.fonts = TH.fonts(self)
+        self.themed = []             # plain tk widgets needing manual repaint
         try:
             self._icon = tk.PhotoImage(data=base64.b64decode(ICON_PNG_B64))
             self.iconphoto(True, self._icon)
@@ -60,117 +65,188 @@ class App(tk.Tk):
         self.after(100, self.scan_saves)
 
     # ---------------------------------------------------------------- UI
+    def _pref_path(self):
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        d = os.path.join(base, "OOTPCoachEditor")
+        os.makedirs(d, exist_ok=True)
+        return os.path.join(d, "theme.txt")
+
+    def _load_pref(self):
+        try:
+            v = open(self._pref_path()).read().strip()
+            return v if v in TH.THEMES else "light"
+        except Exception:
+            return "light"
+
+    def toggle_theme(self):
+        self.mode = "dark" if self.mode == "light" else "light"
+        try:
+            open(self._pref_path(), "w").write(self.mode)
+        except Exception:
+            pass
+        self._paint()
+        if self.coaches:
+            self.fill_coaches()
+
+    def _paint(self):
+        t = TH.THEMES[self.mode]
+        TH.apply(self.style, self, t, self.fonts)
+        for w, role in self.themed:
+            if role == "panel":
+                w.configure(bg=t["panel"])
+            elif role == "bg":
+                w.configure(bg=t["bg"])
+            elif role == "wordmark":
+                w.configure(bg=t["bg"], fg=t["ink"])
+            elif role == "sub":
+                w.configure(bg=t["bg"], fg=t["ink_soft"])
+            elif role == "link":
+                w.configure(bg=t["bg"], fg=t["link"])
+            elif role == "primary":
+                w.configure(bg=t["accent"], fg=t["accent_ink"],
+                            activebackground=t["ink"], activeforeground=t["panel"])
+        self.btn_theme.configure(text="Night game" if self.mode == "light" else "Daylight")
+        self.tree.tag_configure("odd", background=t["panel_alt"])
+        self.tree.tag_configure("even", background=t["panel"])
+        # done work recedes; only the exception gets colour
+        self.tree.tag_configure("done", foreground=t["ink_soft"])
+        self.tree.tag_configure("partial", foreground=t["partial"])
+
+    def _eyebrow(self, parent, num, text):
+        row = ttk.Frame(parent)
+        ttk.Label(row, text="%s" % num, style="Eyebrow.TLabel").pack(side="left")
+        ttk.Label(row, text="  " + text.upper(), style="Eyebrow.TLabel").pack(side="left")
+        return row
+
     def _build(self):
-        pad = dict(padx=6, pady=4)
-
+        # ---- header -------------------------------------------------------
         head = ttk.Frame(self)
-        head.pack(fill="x", padx=6, pady=(6, 0))
+        head.pack(fill="x", padx=18, pady=(14, 0))
         if self._icon:
-            ttk.Label(head, image=self._icon).pack(side="left", padx=(0, 10))
-        box = ttk.Frame(head)
-        box.pack(side="left", anchor="w")
-        tk.Label(box, text=APP, font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        tk.Label(box, text="Max out coach ratings and contracts in an OOTP 27 save",
-                 foreground="#666").pack(anchor="w")
-        links = ttk.Frame(head)
-        links.pack(side="right", anchor="e")
-        for text, url, colour in (("github.com/dknos", GITHUB, "#0a58ca"),
-                                  ("Support on Ko-fi", KOFI, "#c2410c")):
-            lbl = tk.Label(links, text=text, foreground=colour, cursor="hand2",
-                           font=("Segoe UI", 9, "underline"))
-            lbl.pack(anchor="e")
-            lbl.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
-        ttk.Separator(self, orient="horizontal").pack(fill="x", padx=6, pady=(6, 0))
+            self._icon_lbl = tk.Label(head, image=self._icon, bd=0)
+            self._icon_lbl.pack(side="left", padx=(0, 12))
+            self.themed.append((self._icon_lbl, "bg"))
+        box = ttk.Frame(head); box.pack(side="left", anchor="w")
+        wm = tk.Label(box, text="OOTP COACH EDITOR", font=self.fonts["wordmark"], bd=0, anchor="w")
+        wm.pack(anchor="w"); self.themed.append((wm, "wordmark"))
+        sub = tk.Label(box, text="Max out coach ratings and contracts in an Out of the Park 27 save",
+                       font=self.fonts["small"], bd=0, anchor="w")
+        sub.pack(anchor="w"); self.themed.append((sub, "sub"))
 
-        top = ttk.LabelFrame(self, text="1. Save game")
-        top.pack(fill="x", **pad)
-        self.cb_save = ttk.Combobox(top, state="readonly", width=60)
-        self.cb_save.pack(side="left", padx=6, pady=6)
+        right = ttk.Frame(head); right.pack(side="right", anchor="e")
+        self.btn_theme = ttk.Button(right, text="Night game", width=12, command=self.toggle_theme)
+        self.btn_theme.pack(side="right", padx=(10, 0))
+        lk = ttk.Frame(right); lk.pack(side="right")
+        for text, url in (("github.com/dknos", GITHUB), ("Support on Ko-fi", KOFI)):
+            l = tk.Label(lk, text=text, font=self.fonts["link"], cursor="hand2", bd=0)
+            l.pack(anchor="e")
+            l.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+            self.themed.append((l, "link"))
+
+        ttk.Separator(self).pack(fill="x", padx=18, pady=(12, 0))
+
+        # ---- 1. scope -----------------------------------------------------
+        scope = ttk.Frame(self); scope.pack(fill="x", padx=18, pady=(12, 0))
+        self._eyebrow(scope, "1", "Scope").pack(anchor="w")
+        r1 = ttk.Frame(scope); r1.pack(fill="x", pady=(6, 0))
+        ttk.Label(r1, text="Save").pack(side="left")
+        self.cb_save = ttk.Combobox(r1, state="readonly", width=42)
+        self.cb_save.pack(side="left", padx=(8, 6))
         self.cb_save.bind("<<ComboboxSelected>>", lambda e: self.load_save())
-        ttk.Button(top, text="Browse...", command=self.browse).pack(side="left", padx=4)
-        ttk.Button(top, text="Rescan", command=self.scan_saves).pack(side="left", padx=4)
-        self.lbl_ver = ttk.Label(top, text="")
+        ttk.Button(r1, text="Browse", command=self.browse).pack(side="left", padx=3)
+        ttk.Button(r1, text="Rescan", command=self.scan_saves).pack(side="left", padx=3)
+        self.lbl_ver = ttk.Label(r1, text="", style="Soft.TLabel")
         self.lbl_ver.pack(side="left", padx=12)
 
-        mid = ttk.LabelFrame(self, text="2. Team")
-        mid.pack(fill="x", **pad)
-        ttk.Label(mid, text="Organization:").pack(side="left", padx=(6, 2))
-        self.cb_org = ttk.Combobox(mid, state="readonly", width=32)
-        self.cb_org.pack(side="left", padx=2, pady=6)
+        r2 = ttk.Frame(scope); r2.pack(fill="x", pady=(8, 0))
+        ttk.Label(r2, text="Organization").pack(side="left")
+        self.cb_org = ttk.Combobox(r2, state="readonly", width=30)
+        self.cb_org.pack(side="left", padx=(8, 16))
         self.cb_org.bind("<<ComboboxSelected>>", lambda e: self.fill_teams())
-        ttk.Label(mid, text="Team:").pack(side="left", padx=(12, 2))
-        self.cb_team = ttk.Combobox(mid, state="readonly", width=32)
-        self.cb_team.pack(side="left", padx=2)
+        ttk.Label(r2, text="Team").pack(side="left")
+        self.cb_team = ttk.Combobox(r2, state="readonly", width=30)
+        self.cb_team.pack(side="left", padx=8)
         self.cb_team.bind("<<ComboboxSelected>>", lambda e: self.fill_coaches())
-        self.lbl_teamnote = ttk.Label(mid, text="")
-        self.lbl_teamnote.pack(side="left", padx=10)
+        self.lbl_teamnote = ttk.Label(r2, text="", style="Soft.TLabel")
+        self.lbl_teamnote.pack(side="left", padx=12)
 
-        lst = ttk.LabelFrame(self, text="3. Coaches  (select rows, or use Max Out All)")
-        lst.pack(fill="both", expand=True, **pad)
-        cols = ("id", "name", "team", "salary", "yrs", "ext", "ratings")
-        self.tree = ttk.Treeview(lst, columns=cols, show="headings", selectmode="extended")
-        for c, w, t in (("id", 60, "ID"), ("name", 210, "Name"), ("team", 190, "Team"),
-                        ("salary", 100, "Salary"), ("yrs", 55, "Years"),
-                        ("ext", 90, "Extension"), ("ratings", 320, "Ratings (12 edited)")):
+        # ---- 2. coaches ---------------------------------------------------
+        mid = ttk.Frame(self); mid.pack(fill="both", expand=True, padx=18, pady=(14, 0))
+        bar = ttk.Frame(mid); bar.pack(fill="x")
+        self._eyebrow(bar, "2", "Coaches").pack(side="left")
+        ttk.Label(bar, text="   click a column to sort", style="Soft.TLabel").pack(side="left")
+        ttk.Button(bar, text="Select none",
+                   command=lambda: self.tree.selection_remove(self.tree.selection())).pack(side="right", padx=3)
+        ttk.Button(bar, text="Select all",
+                   command=lambda: self.tree.selection_set(self.tree.get_children())).pack(side="right", padx=3)
+
+        wrap = ttk.Frame(mid, style="Panel.TFrame")
+        wrap.pack(fill="both", expand=True, pady=(6, 0))
+        cols = ("st", "id", "name", "team", "salary", "yrs", "ext", "ratings")
+        self.tree = ttk.Treeview(wrap, columns=cols, show="headings", selectmode="extended")
+        spec = (("st", 30, ""), ("id", 62, "ID"), ("name", 200, "Name"), ("team", 200, "Team"),
+                ("salary", 104, "Salary"), ("yrs", 58, "Years"), ("ext", 78, "Extension"),
+                ("ratings", 330, "Ratings (12 edited)"))
+        for c, w, t in spec:
             self.tree.heading(c, text=t, command=lambda col=c: self.sort_by(col))
-            self.tree.column(c, width=w, anchor="w")
-        self._headings = {c: t for c, _w, t in (
-            ("id", 60, "ID"), ("name", 210, "Name"), ("team", 190, "Team"),
-            ("salary", 100, "Salary"), ("yrs", 55, "Years"),
-            ("ext", 90, "Extension"), ("ratings", 320, "Ratings (12 edited)"))}
+            self.tree.column(c, width=w, anchor="w", stretch=(c in ("name", "team", "ratings")))
+        for c in ("id", "salary", "yrs", "ext", "ratings"):
+            self.tree.column(c, anchor="e" if c in ("salary", "yrs") else "w")
+        self._headings = {c: t for c, _w, t in spec}
         self._sort = (None, False)
-        vs = ttk.Scrollbar(lst, orient="vertical", command=self.tree.yview)
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vs.set)
         self.tree.pack(side="left", fill="both", expand=True)
         vs.pack(side="right", fill="y")
 
-        btn = ttk.Frame(self)
-        btn.pack(fill="x", **pad)
-        ttk.Button(btn, text="Select all", command=lambda: self.tree.selection_set(self.tree.get_children())).pack(side="left", padx=3)
-        ttk.Button(btn, text="Select none", command=lambda: self.tree.selection_remove(self.tree.selection())).pack(side="left", padx=3)
-
-        opt = ttk.LabelFrame(self, text="4. What to apply")
-        opt.pack(fill="x", **pad)
+        # ---- 3. apply -----------------------------------------------------
+        low = ttk.Frame(self); low.pack(fill="x", padx=18, pady=(14, 0))
+        self._eyebrow(low, "3", "Apply").pack(anchor="w")
+        opt = ttk.Frame(low); opt.pack(fill="x", pady=(6, 0))
         self.v_rat = tk.BooleanVar(value=True)
         self.v_unk = tk.BooleanVar(value=False)
         self.v_con = tk.BooleanVar(value=True)
-        ttk.Checkbutton(opt, text="Max all 12 coach ratings (=200)", variable=self.v_rat).grid(row=0, column=0, sticky="w", padx=6, pady=2)
-        ttk.Label(opt, text="(the 6 manager fields are categorical, not scales - left alone)",
-                  foreground="#666").grid(row=1, column=0, sticky="w", padx=6)
-        ttk.Checkbutton(opt, text="Set contract", variable=self.v_con).grid(row=0, column=1, sticky="w", padx=16)
-        ttk.Label(opt, text="Years:").grid(row=0, column=2, sticky="e")
-        self.sp_yrs = tk.Spinbox(opt, from_=0, to=15, width=5)
-        self.sp_yrs.grid(row=0, column=3, sticky="w", padx=4)
-        ttk.Label(opt, text="Extension years:").grid(row=1, column=2, sticky="e")
-        self.sp_ext = tk.Spinbox(opt, from_=0, to=15, width=5)
-        self.sp_ext.grid(row=1, column=3, sticky="w", padx=4)
-        ttk.Label(opt, text="Salary:").grid(row=0, column=4, sticky="e", padx=(16, 2))
-        self.cb_sal = ttk.Combobox(opt, state="readonly", width=26, values=[
-            "Leave unchanged",
-            "$1 (free)",
-            "Minimum (lowest the game uses)",
-            "League average",
-            "This organization's average",
-            "Custom..."])
-        self.cb_sal.current(0)
-        self.cb_sal.grid(row=0, column=5, sticky="w")
+        c1 = ttk.Frame(opt); c1.pack(side="left", anchor="n")
+        ttk.Checkbutton(c1, text="Max all 12 coach ratings (200)", variable=self.v_rat).pack(anchor="w")
+        ttk.Label(c1, text="the 6 manager fields are categorical, not scales - left alone",
+                  style="Soft.TLabel").pack(anchor="w")
+        c2 = ttk.Frame(opt); c2.pack(side="left", anchor="n", padx=(34, 0))
+        ttk.Checkbutton(c2, text="Set contract", variable=self.v_con).pack(anchor="w")
+        g = ttk.Frame(c2); g.pack(anchor="w", pady=(4, 0))
+        ttk.Label(g, text="Years").grid(row=0, column=0, sticky="e", padx=(0, 6))
+        self.sp_yrs = ttk.Spinbox(g, from_=0, to=15, width=4); self.sp_yrs.grid(row=0, column=1)
+        ttk.Label(g, text="Extension").grid(row=1, column=0, sticky="e", padx=(0, 6), pady=(4, 0))
+        self.sp_ext = ttk.Spinbox(g, from_=0, to=15, width=4); self.sp_ext.grid(row=1, column=1, pady=(4, 0))
+        for sp, val in ((self.sp_yrs, 10), (self.sp_ext, 10)):
+            sp.delete(0, "end"); sp.insert(0, str(val))
+        c3 = ttk.Frame(opt); c3.pack(side="left", anchor="n", padx=(34, 0))
+        ttk.Label(c3, text="Salary").pack(anchor="w")
+        self.cb_sal = ttk.Combobox(c3, state="readonly", width=27, values=[
+            "Leave unchanged", "$1 (free)", "Minimum (lowest the game uses)",
+            "League average", "This organization's average", "Custom..."])
+        self.cb_sal.current(0); self.cb_sal.pack(anchor="w", pady=(4, 0))
         self.cb_sal.bind("<<ComboboxSelected>>",
                          lambda e: self.e_sal.configure(
                              state="normal" if self.cb_sal.current() == 5 else "disabled"))
-        self.e_sal = ttk.Entry(opt, width=12, state="disabled")
-        self.e_sal.grid(row=1, column=5, sticky="w", pady=2)
-        ttk.Label(opt, text="($1, or multiples of $1,000 from $25,000)",
-                  foreground="#666").grid(row=2, column=4, columnspan=2, sticky="w", padx=4)
-        for sp, val in ((self.sp_yrs, 10), (self.sp_ext, 10)):
-            sp.delete(0, "end"); sp.insert(0, str(val))
+        self.e_sal = ttk.Entry(c3, width=14, state="disabled")
+        self.e_sal.pack(anchor="w", pady=(4, 0))
+        ttk.Label(c3, text="$1, or multiples of $1,000 from $25,000",
+                  style="Soft.TLabel").pack(anchor="w")
 
-        act = ttk.Frame(self)
-        act.pack(fill="x", **pad)
-        ttk.Button(act, text="Apply to selected", command=lambda: self.apply(False)).pack(side="left", padx=4)
-        b = ttk.Button(act, text="MAX OUT ALL COACHES (shown)", command=lambda: self.apply(True))
-        b.pack(side="left", padx=4)
-        self.status = ttk.Label(self, text="", anchor="w", relief="sunken")
-        self.status.pack(fill="x", side="bottom")
+        act = ttk.Frame(low); act.pack(fill="x", pady=(12, 0))
+        self.btn_go = tk.Button(act, text="Max out all coaches shown", bd=0,
+                                relief="flat", padx=18, pady=8, cursor="hand2",
+                                font=self.fonts["btn"], command=lambda: self.apply(True))
+        self.btn_go.pack(side="left")
+        self.themed.append((self.btn_go, "primary"))
+        ttk.Button(act, text="Apply to selected only",
+                   command=lambda: self.apply(False)).pack(side="left", padx=8)
+
+        statuswrap = ttk.Frame(self, style="Panel.TFrame")
+        statuswrap.pack(fill="x", side="bottom", pady=(14, 0))
+        self.status = ttk.Label(statuswrap, text="", anchor="w", style="Status.TLabel")
+        self.status.pack(fill="x")
+        self._paint()
 
     def say(self, msg):
         self.status.config(text=msg)
@@ -211,13 +287,13 @@ class App(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         self.coaches = None
         if ver not in O.SUPPORTED:
-            self.lbl_ver.config(text="OOTP %d - NOT SUPPORTED" % ver, foreground="#b00")
+            self.lbl_ver.config(text="OOTP %d - not supported" % ver, style="Bad.TLabel")
             self.say("This tool only supports OOTP 27. The OOTP %d record layout is "
                      "different (team/org fields read as garbage), so editing it would "
                      "corrupt the save." % ver)
             self.cb_org["values"] = []; self.cb_team["values"] = []
             return
-        self.lbl_ver.config(text="OOTP %d" % ver, foreground="#070")
+        self.lbl_ver.config(text="OOTP %d" % ver, style="Ok.TLabel")
         self.say("Loading %s ..." % label)
 
         def work():
@@ -279,6 +355,8 @@ class App(tk.Tk):
     def _sort_key(col, v):
         """Columns hold display strings, so parse them back to sort sensibly."""
         v = (v or "").strip()
+        if col == "st":
+            return {"\u25cf": 2, "\u25d0": 1}.get(v, 0)
         if col in ("id", "yrs"):
             return int(v or 0)
         if col == "salary":
@@ -301,12 +379,15 @@ class App(tk.Tk):
             rows.sort(key=lambda r: (r[0] or "").lower(), reverse=desc)
         for pos, (_v, item) in enumerate(rows):
             self.tree.move(item, "", pos)
+        for pos, item in enumerate(self.tree.get_children("")):
+            tags = [t for t in self.tree.item(item, "tags") if t in ("done", "partial")]
+            self.tree.item(item, tags=tuple(tags) + ("odd" if pos % 2 else "even",))
         self._sort = (col, desc)
         for c, t in self._headings.items():
             arrow = ("  \u25bc" if desc else "  \u25b2") if c == col else ""
             self.tree.heading(c, text=t + arrow)
         # keep the id list in the order shown, so "max out all" follows the view
-        self.rows = [int(self.tree.item(i)["values"][0]) for i in self.tree.get_children("")]
+        self.rows = [int(self.tree.item(i)["values"][1]) for i in self.tree.get_children("")]
 
     def fill_coaches(self):
         self.tree.delete(*self.tree.get_children())
@@ -327,15 +408,27 @@ class App(tk.Tk):
             con = c.contract(cid) or {}
             rat = c.ratings(cid)
             tail = c.tail_ratings(cid)
-            shown = "-" if not rat else " ".join(
-                [str(rat[i]) for i in sorted(O.RATING_LABELS)] +
-                [str(v) for v in tail.values()])
-            self.tree.insert("", "end", values=(
-                cid, c.name(cid), self.tname(c.team(cid)),
+            vals = ([rat[i] for i in sorted(O.RATING_LABELS)] if rat else []) + \
+                   list(tail.values())
+            shown = " ".join(str(v) for v in vals) if vals else "unreadable"
+            # the list doubles as a checklist: filled = every rating already
+            # maxed, half = some done, empty = untouched
+            if vals and all(v == O.MAX_RATING for v in vals):
+                mark, tag = "\u25cf", "done"
+            elif any(v == O.MAX_RATING for v in vals):
+                mark, tag = "\u25d0", "partial"
+            else:
+                mark, tag = "\u25cb", ""
+            stripe = "odd" if len(self.rows) % 2 else "even"
+            self.tree.insert("", "end", tags=((tag, stripe) if tag else (stripe,)), values=(
+                mark, cid, c.name(cid), self.tname(c.team(cid)),
                 "${:,}".format(con.get("salary", 0)), con.get("years", 0),
                 "%dy" % con.get("ext_years", 0), shown))
             self.rows.append(cid)
-        self.lbl_teamnote.config(text="%d coaches" % len(self.rows))
+        done = sum(1 for i in self.tree.get_children("")
+                   if self.tree.set(i, "st") == "\u25cf")
+        self.lbl_teamnote.config(
+            text="%d coaches   %d already maxed" % (len(self.rows), done))
         if self._sort[0]:
             col, desc = self._sort
             self._sort = (col, not desc)     # sort_by toggles; keep the direction
@@ -348,7 +441,7 @@ class App(tk.Tk):
         if everything:
             ids = list(self.rows)
         else:
-            ids = [int(self.tree.item(i)["values"][0]) for i in self.tree.selection()]
+            ids = [int(self.tree.item(i)["values"][1]) for i in self.tree.selection()]
         if not ids:
             messagebox.showinfo(APP, "No coaches selected."); return
         if ootp_running():

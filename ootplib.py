@@ -75,10 +75,16 @@ def read_header(path):
 
 
 def parse_names(path):
-    """Return (first_names, last_names) as {id: str}.
+    """Return {id: name} for every name in the file.
 
     Entries are: tag(1) | len u32 | string | 4 zero bytes | id u32
-    Tag 0x27 = first names, tag 0x07 = last names -- two separate id spaces.
+
+    Two tag bytes carry names, 0x27 and 0x07. They are NOT "first names" and
+    "surnames" in separate id spaces -- their id ranges are disjoint (1..264925
+    and 31877..264948, zero overlap), so it is one shared id space split by some
+    other attribute. Treating them as two tables meant a coach's surname was
+    looked up in the wrong half whenever its id fell in the other tag's range,
+    which blanked the surname for 3569 of 10713 coaches.
     """
     d = open(path, "rb").read()
     n = len(d)
@@ -117,7 +123,10 @@ def parse_names(path):
         for nid2, s in by_id.items():
             out.setdefault(nid2, s.decode("latin1"))
         tables.append(out)
-    return tables[0], tables[1]
+    merged = {}
+    for t in tables:
+        merged.update(t)
+    return merged
 
 
 def record_starts(d, count):
@@ -230,7 +239,7 @@ class Coaches:
         npath = os.path.join(lg_dir, "names.dat")
         if progress:
             progress("reading names")
-        self.first, self.last = parse_names(npath) if os.path.exists(npath) else ({}, {})
+        self.names = parse_names(npath) if os.path.exists(npath) else {}
 
     # --- field accessors -------------------------------------------------
     def u32(self, cid, off):
@@ -352,8 +361,8 @@ class Coaches:
         return 0
 
     def name(self, cid):
-        f = self.first.get(self.u32(cid, 4), "")
-        l = self.last.get(self.u32(cid, 8), "")
+        f = self.names.get(self.u32(cid, 4), "")
+        l = self.names.get(self.u32(cid, 8), "")
         return ("%s %s" % (f, l)).strip() or "Coach #%d" % cid
 
     def rating_off(self, cid):

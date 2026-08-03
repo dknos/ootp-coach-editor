@@ -19,6 +19,10 @@
 
 ![OOTP Coach Editor](docs/screenshot-main.png)
 
+<p align="center"><i>Light and dark - the toggle is top right, and your choice is remembered.</i></p>
+
+![Dark mode](docs/screenshot-dark.png)
+
 ## What it does
 
 Pick a save, pick an organization or a single team, then max every coach in it.
@@ -43,6 +47,9 @@ while OOTP is open.
 4. Pick an Organization (includes every affiliate) and optionally one Team.
 5. Click any **column heading to sort** - by salary to find your expensive
    staff, or by ratings to find the weakest. Click again to reverse.
+   The dot on the left is a checklist: filled means every rating is already
+   maxed, half means partly done, hollow means untouched. Sort by it to see
+   what is left.
 6. Choose what to apply, then **Apply to selected** or **MAX OUT ALL COACHES**.
 7. Load the save in OOTP.
 
@@ -87,9 +94,6 @@ yourself with `build.bat`.
 - **A few coaches cannot be fully read** and are skipped rather than guessed
   at - around 0.1% of a mature save, up to ~3% of a brand-new one. Counts are
   reported after every run.
-
-- Roughly a third of coaches show a first name only; the surname table is not
-  fully parsed. Cosmetic.
 
 ## If something looks wrong
 
