@@ -7,6 +7,16 @@ import collections, os, re, struct
 
 MAX_RATING = 200
 NBLOCK = 18
+
+# Ratings can be driven down as well as up, but not to zero. The locator finds a
+# coach partly by the signed "tendency" array that follows the ratings block, and
+# _small() counts any byte <= 10 as part of it -- so a block written full of tiny
+# values manufactures a convincing fake tail earlier in the record. Measured: at
+# 10 or below, 45 of 137 anchors move (a later run would then write to the wrong
+# offset); at 11 and above, none do, on both test saves. Zero is worse still,
+# because 0 never occurs naturally in the two end-anchored ratings and writing it
+# there makes them undetectable entirely.
+MIN_RATING = 11
 SUPPORTED = {27}          # versions with a diff-confirmed layout
 
 # Salary must stay inside the range the record locator validates against, or the
@@ -30,6 +40,10 @@ SALARY_STEP = 1000
 # handled by a last-resort third pass that only runs when nothing else matches,
 # which recovers $1 coaches exactly and provably cannot disturb anyone else.
 SALARY_NOMINAL = 1
+
+
+def rating_ok(v):
+    return MIN_RATING <= v <= MAX_RATING
 
 
 def salary_ok(v):
@@ -437,16 +451,20 @@ class Coaches:
         return int(round(sum(vals) / len(vals) / SALARY_STEP) * SALARY_STEP)
 
     def apply(self, cid, max_ratings=True, indices=None, years=None,
-              ext_years=None, include_unknown=False, salary=None):
+              ext_years=None, include_unknown=False, salary=None,
+              rating_value=MAX_RATING):
         """Returns 'ok', 'no_contract' (ratings done, contract skipped),
         'partial' (only the end-anchored ratings could be written), or
         'unresolved' (nothing done)."""
+        if max_ratings and not rating_ok(rating_value):
+            raise ValueError("ratings must be between %d and %d"
+                             % (MIN_RATING, MAX_RATING))
         r = self.rating_off(cid)
         # The end-anchored ratings are independent of the block anchor, so write
         # them even when the block cannot be located.
         if max_ratings:
             for o in self.tail_offsets(cid):
-                self.d[o] = MAX_RATING
+                self.d[o] = rating_value
         if r is None:
             return "partial" if (max_ratings and self.tail_offsets(cid)) else "unresolved"
         if max_ratings:
@@ -454,7 +472,7 @@ class Coaches:
             if include_unknown:
                 idx += UNKNOWN_SLOTS
             for i in idx:
-                self.d[r + i] = MAX_RATING
+                self.d[r + i] = rating_value
         if years is None and ext_years is None and salary is None:
             return "ok"
         o = r - 10

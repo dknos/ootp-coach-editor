@@ -29,9 +29,11 @@
 
 Pick a save, pick an organization or a single team, then max every coach in it.
 
-- **All 12 numeric coach ratings set to 200** - Handle Development, Influences
+- **Set all 12 numeric coach ratings** - Handle Development, Influences
   Mechanics, Handle Aging, Teach Hitting, Teach Pitching, Teach C, Teach IF,
   Teach OF, Teach Running, In-game Running, Scout Majors, Scout Minors.
+  Max them at 200, bottom them out at 11, or pick any value in between - so you
+  can gut a rival organization as easily as you stack your own.
 - **Contract length and extension length**, up to 15 years each.
 - **Salary** - leave alone, `$1`, the game's minimum, league average, that
   organization's average, or a custom figure.
@@ -94,6 +96,14 @@ yourself with `build.bat`.
   systems can be swept into "Arizona Diamondbacks". If a count looks far too
   large, use the **Team** dropdown instead - the team field is read directly
   and is reliable.
+
+- **Ratings stop at 11, not 0.** The tool locates each coach partly by the
+  signed "tendency" bytes that follow the ratings block, and a block written
+  full of tiny values imitates them well enough to fool it: at 10 or below,
+  45 of 137 anchors moved in testing, so a later run would edit the wrong
+  place. Zero is worse - it never occurs naturally in the two end-anchored
+  ratings, and writing it there makes them undetectable. At 11 and above,
+  nothing moves. 11 of 200 is the worst coach the game can show anyway.
 
 - **Coaches with no contract only get ratings.** Most minor-league staff have
   no contract on file. The game never creates a term with no salary, and

@@ -207,7 +207,18 @@ class App(tk.Tk):
         self.v_unk = tk.BooleanVar(value=False)
         self.v_con = tk.BooleanVar(value=True)
         c1 = ttk.Frame(opt); c1.pack(side="left", anchor="n")
-        ttk.Checkbutton(c1, text="Max all 12 coach ratings (200)", variable=self.v_rat).pack(anchor="w")
+        ttk.Checkbutton(c1, text="Set all 12 coach ratings", variable=self.v_rat).pack(anchor="w")
+        rr = ttk.Frame(c1); rr.pack(anchor="w", pady=(4, 0))
+        ttk.Label(rr, text="to").pack(side="left", padx=(0, 6))
+        self.cb_rat = ttk.Combobox(rr, state="readonly", width=22, values=[
+            "200 - the best possible",
+            "%d - the worst allowed" % O.MIN_RATING,
+            "Custom..."])
+        self.cb_rat.current(0); self.cb_rat.pack(side="left")
+        self.cb_rat.bind("<<ComboboxSelected>>", self._rating_mode)
+        self.sp_rat = ttk.Spinbox(rr, from_=O.MIN_RATING, to=O.MAX_RATING, width=5, state="disabled")
+        self.sp_rat.pack(side="left", padx=(6, 0))
+        self.sp_rat.delete(0, "end"); self.sp_rat.insert(0, str(O.MAX_RATING))
         ttk.Label(c1, text="the 6 manager fields are categorical, not scales - left alone",
                   style="Soft.TLabel").pack(anchor="w")
         c2 = ttk.Frame(opt); c2.pack(side="left", anchor="n", padx=(34, 0))
@@ -247,6 +258,43 @@ class App(tk.Tk):
         self.status = ttk.Label(statuswrap, text="", anchor="w", style="Status.TLabel")
         self.status.pack(fill="x")
         self._paint()
+        self._retitle()
+
+    def rating_target(self):
+        """The value the 12 ratings will be set to."""
+        i = self.cb_rat.current()
+        if i == 0:
+            return O.MAX_RATING
+        if i == 1:
+            return O.MIN_RATING
+        try:
+            return int(self.sp_rat.get())
+        except (ValueError, AttributeError):
+            return None
+
+    def _rating_mode(self, _e=None):
+        custom = self.cb_rat.current() == 2
+        self.sp_rat.configure(state="normal" if custom else "disabled")
+        if not custom:
+            v = self.rating_target()
+            self.sp_rat.configure(state="normal")
+            self.sp_rat.delete(0, "end"); self.sp_rat.insert(0, str(v))
+            self.sp_rat.configure(state="disabled")
+        self._retitle()
+        if self.coaches:
+            self.fill_coaches()
+
+    def _retitle(self):
+        v = self.rating_target()
+        if not self.v_rat.get():
+            txt = "Apply to all coaches shown"
+        elif v == O.MAX_RATING:
+            txt = "Max out all coaches shown"
+        elif v is not None and v <= O.MIN_RATING + 9:
+            txt = "Wreck all coaches shown"
+        else:
+            txt = "Apply to all coaches shown"
+        self.btn_go.configure(text=txt)
 
     def say(self, msg):
         self.status.config(text=msg)
@@ -413,9 +461,10 @@ class App(tk.Tk):
             shown = " ".join(str(v) for v in vals) if vals else "unreadable"
             # the list doubles as a checklist: filled = every rating already
             # maxed, half = some done, empty = untouched
-            if vals and all(v == O.MAX_RATING for v in vals):
+            target = self.rating_target() or O.MAX_RATING
+            if vals and all(v == target for v in vals):
                 mark, tag = "\u25cf", "done"
-            elif any(v == O.MAX_RATING for v in vals):
+            elif any(v == target for v in vals):
                 mark, tag = "\u25d0", "partial"
             else:
                 mark, tag = "\u25cb", ""
@@ -428,7 +477,8 @@ class App(tk.Tk):
         done = sum(1 for i in self.tree.get_children("")
                    if self.tree.set(i, "st") == "\u25cf")
         self.lbl_teamnote.config(
-            text="%d coaches   %d already maxed" % (len(self.rows), done))
+            text="%d coaches   %d already at %s" % (len(self.rows), done,
+                                                    self.rating_target()))
         if self._sort[0]:
             col, desc = self._sort
             self._sort = (col, not desc)     # sort_by toggles; keep the direction
@@ -448,6 +498,15 @@ class App(tk.Tk):
             messagebox.showerror(APP, "OOTP is running. Close it completely first -\n"
                                       "otherwise the game will overwrite these changes\n"
                                       "the next time it saves.")
+            return
+        rating = self.rating_target() if self.v_rat.get() else None
+        if self.v_rat.get() and (rating is None or not O.rating_ok(rating)):
+            messagebox.showerror(APP, "Ratings must be a whole number between %d and %d.\n\n"
+                                      "Lower than %d is not offered: the tool locates each "
+                                      "coach partly by the bytes that follow the ratings, and "
+                                      "very small values imitate them well enough that the "
+                                      "next run would edit the wrong place."
+                                 % (O.MIN_RATING, O.MAX_RATING, O.MIN_RATING))
             return
         yrs = ext = sal = None
         if self.v_con.get():
@@ -493,7 +552,8 @@ class App(tk.Tk):
                 if cid in c.starts:
                     tally[c.apply(cid, max_ratings=self.v_rat.get(), years=yrs,
                                   ext_years=ext, salary=sal,
-                                  include_unknown=self.v_unk.get())] += 1
+                                  include_unknown=self.v_unk.get(),
+                                  rating_value=rating or O.MAX_RATING)] += 1
             c.save(backup=True)
             self.coaches = c
             self.fill_coaches()
